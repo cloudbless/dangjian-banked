@@ -3,19 +3,25 @@ from django.db import models
 from system.models import UserProfile, Organization
 
 class Course(models.Model):
+    TYPE_CHOICES = (
+        (1, '视频课程'),
+        (2, '图文/练习题'),
+    )
     title = models.CharField(max_length=200, verbose_name="课程标题")
+    # 👇 新增：课程类型
+    course_type = models.IntegerField(choices=TYPE_CHOICES, default=1, verbose_name="课程类型")
     description = models.TextField(blank=True, verbose_name="课程简介")
-    # 视频链接（可以是上传到我们服务器的，也可以是外部链接，这里以直链为例）
-    video_url = models.URLField(max_length=500, verbose_name="视频链接")
-    # 或者用 FileField 上传视频: video_file = models.FileField(upload_to='videos/')
+    
+    # 👇 修改：视频链接改为非必填 (因为练习题可能没视频)
+    video_url = models.URLField(max_length=500, null=True, blank=True, verbose_name="视频链接")
+    # 👇 新增：用于存放练习题文本、题目或外部问卷链接的富文本
+    content = models.TextField(blank=True, verbose_name="图文内容/练习题")
     
     cover = models.ImageField(upload_to='course_covers/', null=True, blank=True, verbose_name="课程封面")
     points_reward = models.IntegerField(default=10, verbose_name="奖励积分")
     
-    # 发布人与可见范围
     publisher = models.ForeignKey(UserProfile, on_delete=models.CASCADE, verbose_name="发布人")
-    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, null=True, blank=True, verbose_name="所属组织(仅本组织可见)")
-    
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, null=True, blank=True, verbose_name="所属组织")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="发布时间")
 
     class Meta:
@@ -24,6 +30,8 @@ class Course(models.Model):
 
     def __str__(self):
         return self.title
+
+# StudyRecord 保持不变...
 
 
 class StudyRecord(models.Model):

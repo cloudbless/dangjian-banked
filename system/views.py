@@ -53,6 +53,11 @@ class UserViewSet(viewsets.ModelViewSet):
         # 统一增加 -id 排序，解决分页警告
         base_qs = UserProfile.objects.all().order_by('-id')
         
+        # 👇 新增：获取前端传来的 username 参数并进行模糊搜索
+        username_query = self.request.query_params.get('username', '').strip()
+        if username_query:
+            base_qs = base_qs.filter(username__icontains=username_query)
+        
         if user.is_superuser or user.role == 'super_admin':
             return base_qs
         
@@ -182,4 +187,32 @@ def dashboard_stats(request):
             "categories": bar_x,
             "values": bar_y
         }
+    })
+# backend/system/views.py (在文件最下方新增)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def my_branch_info(request):
+    """获取当前登录人所在支部的概况信息"""
+    user = request.user
+    org = user.organization
+    
+    if not org:
+        return Response({
+            'org_name': '暂无所属支部',
+            'total_members': 0,
+            'admins': [],
+            'description': '您当前尚未被分配到任何党支部，请联系上级管理员。'
+        })
+        
+    # 统计本支部总人数
+    total_members = UserProfile.objects.filter(organization=org).count()
+    # 查找本支部的管理员（通常作为支部书记/委员）
+    admins = UserProfile.objects.filter(organization=org, role='branch_admin').values_list('username', flat=True)
+    
+    return Response({
+        'org_name': org.name,
+        'description': org.description,
+        'total_members': total_members,
+        'admins': list(admins)
     })

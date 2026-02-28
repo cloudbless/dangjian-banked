@@ -1,39 +1,57 @@
 # backend/content/views.py
 from django.conf import settings
 from rest_framework import viewsets
-# 引入权限类
 from rest_framework.permissions import IsAuthenticatedOrReadOnly
 from .models import Article
 from .serializers import ArticleSerializer
-
+from rest_framework.exceptions import PermissionDenied
 class ArticleViewSet(viewsets.ModelViewSet):
+    # 移除固定的 queryset 属性，完全交由 get_queryset 动态处理
     queryset = Article.objects.all()
     serializer_class = ArticleSerializer
-    
-    # 允许未登录用户阅读 (GET)，修改 (POST/PUT) 必须登录
     permission_classes = [IsAuthenticatedOrReadOnly]
 
-    # === 关键：实现分类过滤逻辑 ===
     def get_queryset(self):
         """
-        根据 URL 传参进行过滤，例如：/api/content/articles/?article_type=1
+        根据前端传来的 scope 参数，精准区分门户数据与支部数据
         """
         queryset = Article.objects.all()
-        # 获取前端传来的 article_type 参数
-        article_type = self.request.query_params.get('article_type')
         
+        # 1. 基础过滤：文章分类
+        article_type = self.request.query_params.get('article_type')
         if article_type:
             queryset = queryset.filter(article_type=article_type)
+
+        # 2. 核心隔离：判断前端要的是哪个端的数据
+        scope = self.request.query_params.get('scope')
+
+        if scope == 'portal':
+            # 【门户端】只展示一级管理员 (super_admin) 发布的数据
+            return queryset.filter(author__role='super_admin')
             
+        elif scope == 'branch':
+            # 【支部端】只展示当前用户所在支部的数据
+            user = self.request.user
+            if not user.is_authenticated:
+                return queryset.none() # 未登录直接返回空
+            if user.role in ['branch_admin', 'member']:
+                return queryset.filter(organization=user.organization)
+            return queryset # 超管能看到所有支部的数据
+
+        # 3. 后台管理端的默认逻辑 (没有传 scope)
+        user = self.request.user
+        if user.is_authenticated and user.role in ['branch_admin', 'member']:
+             return queryset.filter(organization=user.organization)
+             
         return queryset
 
-    # === 保持你原有的自动填充逻辑 ===
     def perform_create(self, serializer):
         serializer.save(
             author=self.request.user,
             organization=self.request.user.organization
         )
-        # backend/content/views.py
+
+# ... 下面的 upload_editor_image 保持不变 ...
 from django.core.files.storage import default_storage
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt

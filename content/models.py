@@ -4,10 +4,12 @@ from system.models import UserProfile, Organization
 
 class Article(models.Model):
     TYPE_CHOICES = (
-        (1, '今日时政'),
+        (1, '时政要闻'),
         (2, '通知公告'),
         (3, '党员风采'),
         (4, '支部动态'),
+        (5, '学习园地'), # 👈 新增：作为图文展示的学习资料
+        (6, '实践中心'), # 👈 新增：作为图文展示的实践活动宣传
     )
     STATUS_CHOICES = (
         (0, '草稿'),

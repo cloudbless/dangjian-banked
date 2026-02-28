@@ -9,17 +9,45 @@ from rest_framework import status
 from django.db import IntegrityError
 from rest_framework.exceptions import ValidationError
 from system.models import PointsLog
+from django.db.models import Q # 引入 Q 查询
+
 class PracticeActivityViewSet(viewsets.ModelViewSet):
     queryset = PracticeActivity.objects.all()
     serializer_class = PracticeActivitySerializer
-    # 允许未登录用户在前台查看活动列表
     permission_classes = [IsAuthenticatedOrReadOnly]
+
+    def get_queryset(self):
+        queryset = PracticeActivity.objects.all().order_by('-created_at')
+        
+        scope = self.request.query_params.get('scope')
+
+        if scope == 'portal':
+            # 【门户端】只看一级管理员发布的活动
+            return queryset.filter(publisher__role='super_admin')
+            
+        elif scope == 'branch':
+            # 【支部端】只看本支部发布的活动
+            user = self.request.user
+            if not user.is_authenticated:
+                return queryset.none()
+            if user.role in ['branch_admin', 'member']:
+                return queryset.filter(organization=user.organization)
+            return queryset
+
+        # 【后台管理端】默认逻辑
+        user = self.request.user
+        if user.is_authenticated and user.role in ['branch_admin', 'member']:
+             return queryset.filter(organization=user.organization)
+             
+        return queryset
 
     def perform_create(self, serializer):
         serializer.save(
             publisher=self.request.user,
             organization=self.request.user.organization
         )
+
+# ... 下面的 ActivitySignUpViewSet 保持不变 ...
 
 class ActivitySignUpViewSet(viewsets.ModelViewSet):
     queryset = ActivitySignUp.objects.all()
