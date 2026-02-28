@@ -54,3 +54,32 @@ class StudyRecord(models.Model):
 
     def __str__(self):
         return f"{self.user.username} - {self.course.title}"
+# backend/learning/models.py (在文件末尾追加)
+
+class Question(models.Model):
+    TYPE_CHOICES = (
+        ('single', '单选题'),
+        ('multiple', '多选题'),
+    )
+    # 关联到课程，级联删除
+    course = models.ForeignKey(Course, on_delete=models.CASCADE, related_name='questions', verbose_name="所属课程")
+    content = models.TextField(verbose_name="题干")
+    q_type = models.CharField(max_length=10, choices=TYPE_CHOICES, default='single', verbose_name="题目类型")
+    analysis = models.TextField(blank=True, null=True, verbose_name="题目解析")
+
+    class Meta:
+        verbose_name = "习题"
+
+    def __str__(self):
+        return self.content[:20]
+
+class Option(models.Model):
+    question = models.ForeignKey(Question, on_delete=models.CASCADE, related_name='options')
+    content = models.CharField(max_length=255, verbose_name="选项内容")
+    is_correct = models.BooleanField(default=False, verbose_name="是否为正确答案")
+
+    class Meta:
+        verbose_name = "选项"
+
+    def __str__(self):
+        return self.content

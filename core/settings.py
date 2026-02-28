@@ -64,6 +64,7 @@ CORS_ALLOW_HEADERS = list(default_headers) + [
     'token',
     'authorization',
     'content-type',
+    'x-viewing-org-id',
 ]
 
 ROOT_URLCONF = 'core.urls'

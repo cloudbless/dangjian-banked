@@ -3,8 +3,8 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly
-from .models import Course, StudyRecord
-from .serializers import CourseSerializer, StudyRecordSerializer
+from .models import Course, StudyRecord, Question
+from .serializers import CourseSerializer, StudyRecordSerializer, QuestionSerializer
 from system.models import PointsLog
 from django.db.models import Q # 👇 引入 Q 查询，用于多条件过滤
 
@@ -118,3 +118,60 @@ class StudyRecordViewSet(viewsets.ModelViewSet):
             'is_completed': record.is_completed,
             'current_points': request.user.total_points
         })
+    @action(detail=False, methods=['get'])
+    def branch_stats(self, request):
+        from system.models import UserProfile # 引入 User 模型
+        
+        user = request.user
+        org_id = request.query_params.get('org_id')
+
+        # 1. 权限与数据范围判定
+        if user.role == 'super_admin':
+            if org_id:
+                # 一级管理员指定查看某个支部
+                users = UserProfile.objects.filter(organization_id=org_id)
+            else:
+                # 默认查看所有人
+                users = UserProfile.objects.all()
+        elif user.role == 'branch_admin':
+            # 支部管理员只能查看本支部
+            users = UserProfile.objects.filter(organization=user.organization)
+        else:
+            return Response({'error': '无权限查看'}, status=403)
+
+        # 2. 组装每个人的学习数据
+        data = []
+        for u in users:
+            records = StudyRecord.objects.filter(user=u).select_related('course')
+            record_data = []
+            for r in records:
+                record_data.append({
+                    'course_id': r.course.id,
+                    'course_title': r.course.title,
+                    'is_completed': r.is_completed,
+                    'progress': r.progress,
+                    'last_studied_at': r.last_studied_at.strftime('%Y-%m-%d %H:%M') if r.last_studied_at else None,
+                })
+            
+            data.append({
+                'user_id': u.id,
+                'username': u.username,
+                'total_points': u.total_points,
+                'organization_name': u.organization.name if u.organization else '未分配',
+                'records': record_data
+            })
+
+        return Response(data)
+# 👇 新增题目视图
+class QuestionViewSet(viewsets.ModelViewSet):
+    queryset = Question.objects.all().order_by('id')
+    serializer_class = QuestionSerializer
+    permission_classes = [IsAuthenticatedOrReadOnly]
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        # 允许通过 course_id 过滤某节课的题目
+        course_id = self.request.query_params.get('course_id')
+        if course_id:
+            queryset = queryset.filter(course_id=course_id)
+        return queryset
