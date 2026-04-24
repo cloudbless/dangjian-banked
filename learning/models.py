@@ -20,6 +20,9 @@ class Course(models.Model):
     cover = models.ImageField(upload_to='course_covers/', null=True, blank=True, verbose_name="课程封面")
     points_reward = models.IntegerField(default=10, verbose_name="奖励积分")
     
+    # 👇 新增：任务性质（是否必修）
+    is_required = models.BooleanField(default=False, verbose_name="是否必修")
+    
     publisher = models.ForeignKey(UserProfile, on_delete=models.CASCADE, verbose_name="发布人")
     organization = models.ForeignKey(Organization, on_delete=models.CASCADE, null=True, blank=True, verbose_name="所属组织")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="发布时间")

@@ -1,10 +1,12 @@
 # backend/content/views.py
 from django.conf import settings
 from rest_framework import viewsets
-from rest_framework.permissions import IsAuthenticatedOrReadOnly
+from rest_framework.permissions import IsAuthenticatedOrReadOnly, IsAuthenticated
 from .models import Article
 from .serializers import ArticleSerializer
 from rest_framework.exceptions import PermissionDenied
+from rest_framework.decorators import action # 👇 新增引入 action
+from rest_framework.response import Response # 👇 新增引入 Response
 class ArticleViewSet(viewsets.ModelViewSet):
     # 移除固定的 queryset 属性，完全交由 get_queryset 动态处理
     queryset = Article.objects.all()
@@ -44,13 +46,26 @@ class ArticleViewSet(viewsets.ModelViewSet):
              return queryset.filter(organization=user.organization)
              
         return queryset
+        
 
     def perform_create(self, serializer):
         serializer.save(
             author=self.request.user,
             organization=self.request.user.organization
         )
-
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated]) 
+    def like(self, request, pk=None):
+        article = self.get_object()
+        user = request.user
+        
+        # 判断如果用户已经点过赞了，就取消点赞
+        if article.likes.filter(id=user.id).exists():
+            article.likes.remove(user)
+            return Response({'status': 'unliked', 'like_count': article.likes.count()})
+        # 如果没点过，就加上点赞
+        else:
+            article.likes.add(user)
+            return Response({'status': 'liked', 'like_count': article.likes.count()})
 # ... 下面的 upload_editor_image 保持不变 ...
 from django.core.files.storage import default_storage
 from django.http import JsonResponse
@@ -74,3 +89,4 @@ def upload_editor_image(request):
                 }
             })
     return JsonResponse({"errno": 1, "message": "上传失败"})
+

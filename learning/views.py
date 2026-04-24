@@ -120,7 +120,9 @@ class StudyRecordViewSet(viewsets.ModelViewSet):
         })
     @action(detail=False, methods=['get'])
     def branch_stats(self, request):
-        from system.models import UserProfile # 引入 User 模型
+        from system.models import UserProfile 
+        from .models import Course, StudyRecord # 确保引入 Course
+        from django.db.models import Q # 确保引入 Q
         
         user = request.user
         org_id = request.query_params.get('org_id')
@@ -128,13 +130,10 @@ class StudyRecordViewSet(viewsets.ModelViewSet):
         # 1. 权限与数据范围判定
         if user.role == 'super_admin':
             if org_id:
-                # 一级管理员指定查看某个支部
                 users = UserProfile.objects.filter(organization_id=org_id)
             else:
-                # 默认查看所有人
                 users = UserProfile.objects.all()
         elif user.role == 'branch_admin':
-            # 支部管理员只能查看本支部
             users = UserProfile.objects.filter(organization=user.organization)
         else:
             return Response({'error': '无权限查看'}, status=403)
@@ -142,13 +141,27 @@ class StudyRecordViewSet(viewsets.ModelViewSet):
         # 2. 组装每个人的学习数据
         data = []
         for u in users:
+            # 👇 新增：计算该党员应该完成的“必修课总数” (包含超管发的、本支部发的、全局公开的)
+            required_count = Course.objects.filter(
+                Q(organization=u.organization) | Q(publisher__role='super_admin') | Q(organization__isnull=True),
+                is_required=True
+            ).distinct().count()
+
             records = StudyRecord.objects.filter(user=u).select_related('course')
             record_data = []
+            completed_required = 0 # 👇 新增：统计该党员已完成的必修课数量
+
             for r in records:
+                is_req = r.course.is_required
+                # 如果这门课是必修，且状态是已完成，则计数 + 1
+                if is_req and r.is_completed:
+                    completed_required += 1
+
                 record_data.append({
                     'course_id': r.course.id,
                     'course_title': r.course.title,
                     'is_completed': r.is_completed,
+                    'is_required': is_req,
                     'progress': r.progress,
                     'last_studied_at': r.last_studied_at.strftime('%Y-%m-%d %H:%M') if r.last_studied_at else None,
                 })
@@ -158,6 +171,8 @@ class StudyRecordViewSet(viewsets.ModelViewSet):
                 'username': u.username,
                 'total_points': u.total_points,
                 'organization_name': u.organization.name if u.organization else '未分配',
+                'required_count': required_count,           # 传给前端：必修总数
+                'completed_required': completed_required,   # 传给前端：已完成必修数
                 'records': record_data
             })
 

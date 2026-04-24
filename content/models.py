@@ -30,6 +30,9 @@ class Article(models.Model):
     # 只有本支部的人能看到本支部的通知
     organization = models.ForeignKey(Organization, on_delete=models.CASCADE, null=True, blank=True, verbose_name="所属组织")
     
+# 👇 新增：记录点赞的用户（多对多关系）
+    likes = models.ManyToManyField(UserProfile, related_name='liked_articles', blank=True, verbose_name="点赞用户")
+
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
 
