@@ -23,7 +23,8 @@ class PracticeActivity(models.Model):
         ordering = ['-created_at']
 
 class ActivitySignUp(models.Model):
-    SIGNUP_STATUS = ((0, '待审核'), (1, '报名成功'), (2, '已驳回'), (3, '已签到'))
+    # 👇 将状态拆分，3代表已发分（流程结束）
+    SIGNUP_STATUS = ((0, '待审核'), (1, '已通过'), (2, '已驳回'), (3, '已发分'))
 
     activity = models.ForeignKey(PracticeActivity, on_delete=models.CASCADE, related_name='signups')
     user = models.ForeignKey(UserProfile, on_delete=models.CASCADE)

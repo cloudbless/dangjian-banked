@@ -19,10 +19,13 @@ class OrganizationSerializer(serializers.ModelSerializer):
 
 # 2. 用户信息序列化
 class UserProfileSerializer(serializers.ModelSerializer):
-    # 显示组织的名称，而不是只有ID
     organization_name = serializers.CharField(source='organization.name', read_only=True)
 
     class Meta:
         model = UserProfile
-        # 千万不要把 password 返回给前端！
-        fields = ['id', 'username', 'first_name', 'role', 'organization', 'organization_name', 'phone', 'avatar', 'total_points']
+        # 👇 在 fields 中加入新增的字段
+        fields = [
+            'id', 'username', 'real_name', 'gender', 'join_party_date', 
+            'birthday', 'identity_card', 'role', 'organization', 
+            'organization_name', 'phone', 'avatar', 'total_points'
+        ]

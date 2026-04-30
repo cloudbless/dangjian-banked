@@ -5,7 +5,7 @@ from .views import PracticeActivityViewSet, ActivitySignUpViewSet
 
 router = DefaultRouter()
 router.register(r'activities', PracticeActivityViewSet)
-router.register(r'signups', ActivitySignUpViewSet)
+router.register(r'registrations', ActivitySignUpViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

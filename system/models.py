@@ -36,6 +36,13 @@ class UserProfile(AbstractUser):
     # 成长与积分
     total_points = models.IntegerField(default=0, verbose_name="总积分")
     
+    GENDER_CHOICES = ((1, '男'), (2, '女'))
+    real_name = models.CharField(max_length=50, null=True, blank=True, verbose_name="真实姓名")
+    gender = models.IntegerField(choices=GENDER_CHOICES, default=1, verbose_name="性别")
+    join_party_date = models.DateField(null=True, blank=True, verbose_name="入党时间")
+    birthday = models.DateField(null=True, blank=True, verbose_name="出生日期")
+    identity_card = models.CharField(max_length=18, null=True, blank=True, verbose_name="身份证号")
+
     class Meta:
         verbose_name = "用户信息"
         verbose_name_plural = verbose_name

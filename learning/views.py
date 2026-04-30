@@ -17,32 +17,51 @@ class CourseViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticatedOrReadOnly]
 
     def get_queryset(self):
-        """
-        课程列表的数据隔离逻辑
-        """
         queryset = Course.objects.all().order_by('-created_at')
         scope = self.request.query_params.get('scope')
+        user = self.request.user
 
+        # === 1. 基础数据隔离 ===
         if scope == 'portal':
-            # 【门户端】只展示一级管理员发布的课程
-            return queryset.filter(publisher__role='super_admin')
-            
+            queryset = queryset.filter(publisher__role='super_admin')
         elif scope == 'branch':
-            # 【支部端】只能看到“本支部发布的课程” + “全局公开的课程”
-            user = self.request.user
             if not user.is_authenticated:
                 return queryset.none()
             if user.role in ['branch_admin', 'member']:
-                return queryset.filter(Q(organization=user.organization) | Q(organization__isnull=True))
-            return queryset
+                queryset = queryset.filter(Q(organization=user.organization) | Q(organization__isnull=True))
+        else:
+            # 个人中心默认逻辑：放宽范围
+            if user.is_authenticated and user.role in ['branch_admin', 'member']:
+                 queryset = queryset.filter(Q(organization=user.organization) | Q(publisher__role='super_admin') | Q(organization__isnull=True))
 
-        # 【后台管理端】默认逻辑
-        # 【默认逻辑：修复 404】
-        # 即便前端详情页没传 scope 参数，只要是本支部或超管发的，都允许读取
-        user = self.request.user
-        if user.is_authenticated and user.role in ['branch_admin', 'member']:
-             return queryset.filter(Q(organization=user.organization) | Q(publisher__role='super_admin'))
-             
+        # === 2. 必修课过滤 (处理 is_required) ===
+        is_required_param = self.request.query_params.get('is_required')
+        is_req = None
+        if is_required_param is not None:
+            is_req = is_required_param.lower() in ['true', '1']
+            queryset = queryset.filter(is_required=is_req)
+
+        # === 3. 完成状态过滤 (处理 is_completed) ===
+        is_completed_param = self.request.query_params.get('is_completed')
+        if is_completed_param is not None and user.is_authenticated:
+            is_comp = is_completed_param.lower() in ['true', '1']
+            
+            # 获取当前用户实打实已完成的课程 ID 列表
+            completed_course_ids = StudyRecord.objects.filter(
+                user=user, 
+                is_completed=True
+            ).values_list('course_id', flat=True)
+
+            if is_comp:
+                # 【核心修复】：如果是查“已完成”，解除组织隔离！直接从全库中匹配他学过的课
+                queryset = Course.objects.filter(id__in=completed_course_ids)
+                # 补回必修过滤条件
+                if is_req is not None:
+                    queryset = queryset.filter(is_required=is_req)
+            else:
+                # 如果是查“待完成”，从刚才隔离好的列表中排除掉已经学完的
+                queryset = queryset.exclude(id__in=completed_course_ids)
+
         return queryset
 
     def perform_create(self, serializer):
@@ -97,12 +116,12 @@ class StudyRecordViewSet(viewsets.ModelViewSet):
             user = request.user
             user.total_points += points_earned
             user.save()
-
+            type_name = course.get_course_type_display() if hasattr(course, 'get_course_type_display') else "课程"
             # 2. 记录积分轨迹 (写入明细表)
             PointsLog.objects.create(
-                user=user,
-                change_amount=points_earned,
-                reason=f"完成视频课程学习：{course.title}"
+            user=user,
+            change_amount=course.points_reward,
+            reason=f"完成{type_name}学习：{course.title}"  # 👈 这样就会显示 "完成图文学习：xxx" 或 "完成视频学习：xxx"
             )
             msg = f"恭喜完成学习，获得 {points_earned} 积分！"
             
