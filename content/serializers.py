@@ -13,7 +13,7 @@ class ArticleSerializer(serializers.ModelSerializer):
     class Meta:
         model = Article
         fields = '__all__'
-
+        read_only_fields = ('author', )
     # 获取总点赞数
     def get_like_count(self, obj):
         return obj.likes.count()

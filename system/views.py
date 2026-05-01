@@ -5,8 +5,10 @@ from rest_framework.decorators import api_view, permission_classes, action
 from rest_framework.exceptions import PermissionDenied
 from django.db.models import Count, Sum
 
-from .models import Organization, UserProfile, PointsLog
-from .serializers import OrganizationSerializer, UserProfileSerializer
+# 👇 补充导入了 PartyMemberRecord
+from .models import Organization, UserProfile, PointsLog, PartyMemberRecord
+# 👇 补充导入了 PartyMemberRecordSerializer
+from .serializers import OrganizationSerializer, UserProfileSerializer, PartyMemberRecordSerializer
 from learning.models import StudyRecord
 
 # ==========================================
@@ -53,7 +55,7 @@ class UserViewSet(viewsets.ModelViewSet):
         # 统一增加 -id 排序，解决分页警告
         base_qs = UserProfile.objects.all().order_by('-id')
         
-        # 👇 新增：获取前端传来的 username 参数并进行模糊搜索
+        # 获取前端传来的 username 参数并进行模糊搜索
         username_query = self.request.query_params.get('username', '').strip()
         if username_query:
             base_qs = base_qs.filter(username__icontains=username_query)
@@ -68,13 +70,13 @@ class UserViewSet(viewsets.ModelViewSet):
         # 普通用户只能看到自己
         return base_qs.filter(id=user.id)
 
-   # 🎯 核心修复：在这里显式指定，me 接口只需要登录即可，不需要管理员权限
+    # 显式指定，me 接口只需要登录即可，不需要管理员权限
     @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])
     def me(self, request):
         serializer = self.get_serializer(request.user)
         return Response(serializer.data)
 
-    # 🎯 重置党员密码
+    # 重置党员密码
     @action(detail=True, methods=['post'])
     def reset_password(self, request, pk=None):
         target_user = self.get_object()
@@ -91,6 +93,20 @@ class UserViewSet(viewsets.ModelViewSet):
         target_user.set_password(new_password)
         target_user.save()
         return Response({'detail': f'用户 [{target_user.username}] 密码重置成功'})
+
+    # 👇 新增：专门用于更新纪实档案的接口
+    @action(detail=True, methods=['put'])
+    def update_record(self, request, pk=None):
+        user = self.get_object()
+        # get_or_create 保证即使之前的信号没触发，也能自动建一张空表
+        record, created = PartyMemberRecord.objects.get_or_create(user=user)
+        
+        # 使用 partial=True 允许部分更新
+        serializer = PartyMemberRecordSerializer(record, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response({'message': '纪实档案更新成功'})
+        return Response(serializer.errors, status=400)
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
@@ -130,6 +146,7 @@ class UserViewSet(viewsets.ModelViewSet):
                 raise PermissionDenied("权限不足：无法将成员移出本支部")
                 
         serializer.save()
+        
 
 class PointsLogSerializer(serializers.ModelSerializer):
     class Meta:
@@ -188,26 +205,35 @@ def dashboard_stats(request):
             "values": bar_y
         }
     })
-# backend/system/views.py (在文件最下方新增)
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def my_branch_info(request):
-    """获取当前登录人所在支部的概况信息"""
+    """获取支部概况，支持超管视察模式"""
     user = request.user
-    org = user.organization
+    # 获取前端传来的视察 ID
+    viewing_org_id = request.query_params.get('org_id')
     
+    # 权限判断：只有超管或 super_admin 角色能视察其他支部
+    if viewing_org_id and (user.is_superuser or user.role == 'super_admin'):
+        try:
+            org = Organization.objects.get(id=viewing_org_id)
+        except Organization.DoesNotExist:
+            return Response({'detail': '指定的支部不存在'}, status=404)
+    else:
+        # 普通用户或未传 ID，返回自己所属组织
+        org = user.organization
+
     if not org:
         return Response({
             'org_name': '暂无所属支部',
             'total_members': 0,
             'admins': [],
-            'description': '您当前尚未被分配到任何党支部，请联系上级管理员。'
+            'description': '尚未分配党支部，请联系管理员。'
         })
         
-    # 统计本支部总人数
+    # 基于确定的 org 对象进行统计
     total_members = UserProfile.objects.filter(organization=org).count()
-    # 查找本支部的管理员（通常作为支部书记/委员）
     admins = UserProfile.objects.filter(organization=org, role='branch_admin').values_list('username', flat=True)
     
     return Response({
