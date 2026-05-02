@@ -20,7 +20,7 @@ class CourseViewSet(viewsets.ModelViewSet):
         queryset = Course.objects.all().order_by('-created_at')
         scope = self.request.query_params.get('scope')
         user = self.request.user
-
+        viewing_org_id = self.request.META.get('HTTP_X_VIEWING_ORG_ID')
         # === 1. 基础数据隔离 ===
         if scope == 'portal':
             queryset = queryset.filter(publisher__role='super_admin')
@@ -29,6 +29,8 @@ class CourseViewSet(viewsets.ModelViewSet):
                 return queryset.none()
             if user.role in ['branch_admin', 'member']:
                 queryset = queryset.filter(Q(organization=user.organization) | Q(organization__isnull=True))
+            elif user.role == 'super_admin' and viewing_org_id:
+                queryset = queryset.filter(Q(organization_id=viewing_org_id) | Q(organization__isnull=True))
         else:
             # 个人中心默认逻辑：放宽范围
             if user.is_authenticated and user.role in ['branch_admin', 'member']:

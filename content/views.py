@@ -7,6 +7,7 @@ from .serializers import ArticleSerializer
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.decorators import action # 👇 新增引入 action
 from rest_framework.response import Response # 👇 新增引入 Response
+from django.db.models import Q
 class ArticleViewSet(viewsets.ModelViewSet):
     # 移除固定的 queryset 属性，完全交由 get_queryset 动态处理
     queryset = Article.objects.all()
@@ -23,10 +24,13 @@ class ArticleViewSet(viewsets.ModelViewSet):
         article_type = self.request.query_params.get('article_type')
         if article_type:
             queryset = queryset.filter(article_type=article_type)
-
+        title_query = self.request.query_params.get('title', '').strip()
+        if title_query:
+            # title__icontains 表示忽略大小写的包含（类似 SQL 中的 LIKE '%xxx%'）
+            queryset = queryset.filter(title__icontains=title_query)
         # 2. 核心隔离：判断前端要的是哪个端的数据
         scope = self.request.query_params.get('scope')
-
+        viewing_org_id = self.request.META.get('HTTP_X_VIEWING_ORG_ID')
         if scope == 'portal':
             # 【门户端】只展示一级管理员 (super_admin) 发布的数据
             return queryset.filter(author__role='super_admin')
@@ -38,12 +42,17 @@ class ArticleViewSet(viewsets.ModelViewSet):
                 return queryset.none() # 未登录直接返回空
             if user.role in ['branch_admin', 'member']:
                 return queryset.filter(organization=user.organization)
+            if user.role == 'super_admin' and viewing_org_id:
+                return queryset.filter(organization_id=viewing_org_id)
             return queryset # 超管能看到所有支部的数据
 
-        # 3. 后台管理端的默认逻辑 (没有传 scope)
+        # 3. 后台管理端与详情页的默认逻辑 (没有传 scope)
         user = self.request.user
         if user.is_authenticated and user.role in ['branch_admin', 'member']:
-             return queryset.filter(organization=user.organization)
+            # 允许查看本支部的文章，或者超管发布的公共文章
+            return queryset.filter(
+                Q(organization=user.organization) | Q(author__role='super_admin')
+            )
              
         return queryset
         

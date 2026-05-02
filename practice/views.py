@@ -15,12 +15,12 @@ class PracticeActivityViewSet(viewsets.ModelViewSet):
     queryset = PracticeActivity.objects.all()
     serializer_class = PracticeActivitySerializer
     permission_classes = [IsAuthenticatedOrReadOnly]
-
+    
     def get_queryset(self):
         queryset = PracticeActivity.objects.all().order_by('-created_at')
         
         scope = self.request.query_params.get('scope')
-
+        viewing_org_id = self.request.META.get('HTTP_X_VIEWING_ORG_ID')
         if scope == 'portal':
             # 【门户端】只看一级管理员发布的活动
             return queryset.filter(publisher__role='super_admin')
@@ -32,8 +32,10 @@ class PracticeActivityViewSet(viewsets.ModelViewSet):
                 return queryset.none()
             if user.role in ['branch_admin', 'member']:
                 return queryset.filter(organization=user.organization)
+            if user.role == 'super_admin' and viewing_org_id:
+                return queryset.filter(organization_id=viewing_org_id)
             return queryset
-
+            
         # 【后台管理端】默认逻辑
         user = self.request.user
         if user.is_authenticated and user.role in ['branch_admin', 'member']:

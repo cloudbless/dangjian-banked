@@ -17,6 +17,8 @@ class Article(models.Model):
     )
 
     title = models.CharField(max_length=200, verbose_name="标题")
+
+    summary = models.CharField(max_length=255, blank=True, null=True, verbose_name="摘要")
     # 封面图：会自动上传到 media/covers/ 目录
     cover = models.ImageField(upload_to='covers/', null=True, blank=True, verbose_name="封面")
     # 核心内容：存储 HTML 代码
