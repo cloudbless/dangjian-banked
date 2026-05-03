@@ -36,15 +36,20 @@ class ArticleViewSet(viewsets.ModelViewSet):
             return queryset.filter(author__role='super_admin')
             
         elif scope == 'branch':
-            # 【支部端】只展示当前用户所在支部的数据
             user = self.request.user
             if not user.is_authenticated:
-                return queryset.none() # 未登录直接返回空
-            if user.role in ['branch_admin', 'member']:
-                return queryset.filter(organization=user.organization)
+                return queryset.none()
+
+            # 1. 超管视察模式（优先级最高）
             if user.role == 'super_admin' and viewing_org_id:
                 return queryset.filter(organization_id=viewing_org_id)
-            return queryset # 超管能看到所有支部的数据
+                
+            # 2. 其他情况（包括普通用户，以及没有视察目标的超管），全部展示自己所属组织的数据
+            if user.organization: 
+                return queryset.filter(organization=user.organization)
+            
+            # 如果走到这里，说明用户没有组织（数据异常情况），为了安全可以返回空
+            return queryset.none()
 
         # 3. 后台管理端与详情页的默认逻辑 (没有传 scope)
         user = self.request.user

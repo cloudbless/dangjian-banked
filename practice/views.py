@@ -28,13 +28,16 @@ class PracticeActivityViewSet(viewsets.ModelViewSet):
         elif scope == 'branch':
             # 【支部端】只看本支部发布的活动
             user = self.request.user
-            if not user.is_authenticated:
-                return queryset.none()
-            if user.role in ['branch_admin', 'member']:
-                return queryset.filter(organization=user.organization)
+             # 1. 超管视察模式（优先级最高）
             if user.role == 'super_admin' and viewing_org_id:
                 return queryset.filter(organization_id=viewing_org_id)
-            return queryset
+                
+            # 2. 其他情况（包括普通用户，以及没有视察目标的超管），全部展示自己所属组织的数据
+            if user.organization: 
+                return queryset.filter(organization=user.organization)
+            
+            # 如果走到这里，说明用户没有组织（数据异常情况），为了安全可以返回空
+            return queryset.none()
             
         # 【后台管理端】默认逻辑
         user = self.request.user

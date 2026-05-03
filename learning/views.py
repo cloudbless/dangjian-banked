@@ -24,15 +24,26 @@ class CourseViewSet(viewsets.ModelViewSet):
         # === 1. 基础数据隔离 ===
         if scope == 'portal':
             queryset = queryset.filter(publisher__role='super_admin')
+            
         elif scope == 'branch':
             if not user.is_authenticated:
                 return queryset.none()
-            if user.role in ['branch_admin', 'member']:
-                queryset = queryset.filter(Q(organization=user.organization) | Q(organization__isnull=True))
-            elif user.role == 'super_admin' and viewing_org_id:
+                
+            # 1. 超管视察模式：看视察支部的数据 + 全局公开数据
+            if user.role == 'super_admin' and viewing_org_id:
                 queryset = queryset.filter(Q(organization_id=viewing_org_id) | Q(organization__isnull=True))
+                
+            # 2. 其他情况（普通用户，或者超管日常访问）：看自己所属支部的数据 + 全局公开数据
+            elif hasattr(user, 'organization') and user.organization:
+                queryset = queryset.filter(Q(organization=user.organization) | Q(organization__isnull=True))
+                
+            # 3. 兜底安全：如果是个没分配组织的游离用户，只能看全局公开数据
+            else:
+                queryset = queryset.filter(organization__isnull=True)
+                
         else:
-            # 个人中心默认逻辑：放宽范围
+            # 个人中心或后台管理默认逻辑
+            # 注意：超管在后台管理（不传 scope）时，这里会直接跳过，返回全量数据，这是符合后台管理逻辑的！
             if user.is_authenticated and user.role in ['branch_admin', 'member']:
                  queryset = queryset.filter(Q(organization=user.organization) | Q(publisher__role='super_admin') | Q(organization__isnull=True))
 
